@@ -11,8 +11,8 @@ const client = new Upload(process.env.S3_BUCKET, {
     path: 'pets/avatar',
     region: process.env.S3_REGION,
     acl: 'public-read',
-    accessKeyId: process.env.AKIAIZCRPIEQW2NA6DJQ,
-    secretAccessKey: process.env.WNpK9xJ1COSjG9IglPuuHisZeFWO7HxVEki3xLyq
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
   },
   cleanup: {
     versions: true,
@@ -112,6 +112,37 @@ module.exports = (app) => {
   app.delete('/pets/:id', (req, res) => {
     Pet.findByIdAndRemove(req.params.id).exec((err, pet) => {
       return res.redirect('/')
+    });
+  });
+
+  //PURCHASE PET
+  app.post('/pets/:id/purchase', (req, res) => {
+    var stripe = require('stripe')(process.env.PRIVATE_STRIPE_API_KEY);
+    const token = req.body.stripeToken;
+    let petId = req.body.petId || req.params.id;
+
+    Pet.findById(petId).exec((err, pet) => {
+      if (err) {
+        console.log('Error: ', err);
+        res.redirect(`pets/${req.params.id}`);
+      }
+      const charge = stripe.charges.create({
+        amount: pet.price * 100,
+        currency: 'usd',
+        description: `Purchased ${pet.name}, ${pet.species}`,
+        source: token,
+      }).then((chg) => {
+        const user = {
+          email: req.body.stripeEmail,
+          amount: chg.amount / 100,
+          petName: pet.name
+        };
+        mailer.sendMail(user, req, res);
+        res.redirect(`/pets/${req.params.id}`);
+      })
+      .catch(err => {
+        console.log('Error: ', err);
+      });
     });
   });
 }
